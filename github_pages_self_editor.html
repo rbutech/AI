@@ -36,14 +36,14 @@
 </header>
 <main>
   <section class="panel">
-    <h2>1. Repository settings</h2>
-    <div class="warning"><strong>Security:</strong> Never hard-code a GitHub token in a public HTML file or commit it to your repository. Paste a fine-grained personal access token only when needed, grant access to this repository with <em>Contents: Read and write</em>, and revoke it after use. Anyone who can run modified page JavaScript could potentially steal a token entered here. For a safer production setup, use a small backend or GitHub App.</div>
+    <h2>Repository settings</h2>
+    <div class="warning"><strong>Security:</strong> Repository settings are preconfigured. Enter a fine-grained token only when needed; never hard-code it into this public page. Grant access only to the <em>AI</em> repository with <em>Contents: Read and write</em>. A token exposed to public-page JavaScript can be stolen; a backend or GitHub App is safer.</div>
     <div class="grid" style="margin-top:14px">
-      <div><label for="owner">GitHub username / organization</label><input id="owner" autocomplete="off" placeholder="your-username"></div>
-      <div><label for="repo">Repository name</label><input id="repo" autocomplete="off" placeholder="your-repository"></div>
-      <div><label for="path">HTML file path in repository</label><input id="path" value="index.html" autocomplete="off"></div>
-      <div><label for="branch">Branch</label><input id="branch" value="main" autocomplete="off"></div>
-      <div style="grid-column:1/-1"><label for="token">GitHub fine-grained access token</label><input id="token" type="password" autocomplete="new-password" placeholder="github_pat_…"><div class="hint">Kept only in this page's memory; it is not saved to local storage or embedded in the file.</div></div>
+      <div><label for="owner">GitHub username / organization</label><input id="owner" autocomplete="off" value="rbutech" readonly></div>
+      <div><label for="repo">Repository name</label><input id="repo" autocomplete="off" value="AI" readonly></div>
+      <div><label for="path">HTML file path in repository</label><input id="path" value="index.html" autocomplete="off" readonly></div>
+      <div><label for="branch">Branch</label><input id="branch" value="main" autocomplete="off" readonly></div>
+      <div style="grid-column:1/-1"><label for="token">GitHub fine-grained access token</label><input id="token" type="password" autocomplete="new-password" placeholder="github_pat_…"><div class="hint">The token is not saved to browser storage or embedded in the file. You must enter it for each page session.</div></div>
     </div>
     <div class="actions">
       <button id="loadBtn">Load HTML from GitHub</button>

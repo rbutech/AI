@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub Pages — Self Editor</title>
+<style>
+  :root { color-scheme: light dark; --accent:#2563eb; --border:color-mix(in srgb, CanvasText 18%, transparent); }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; background:Canvas; color:CanvasText; }
+  header { padding:24px max(18px,calc((100vw - 1100px)/2)); background:#14213d; color:white; }
+  header h1 { margin:0 0 6px; font-size:clamp(1.4rem,3vw,2rem); }
+  header p { margin:0; opacity:.9; }
+  main { max-width:1100px; margin:24px auto; padding:0 18px 40px; display:grid; gap:18px; }
+  .panel { border:1px solid var(--border); border-radius:14px; padding:18px; }
+  h2 { margin:0 0 14px; font-size:1.15rem; }
+  .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  label { display:block; font-weight:650; font-size:.9rem; margin-bottom:5px; }
+  input, textarea, select { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:Canvas; color:CanvasText; font:inherit; }
+  textarea { min-height:360px; resize:vertical; font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:2; }
+  button { border:0; border-radius:8px; padding:10px 15px; font:inherit; font-weight:700; cursor:pointer; background:var(--accent); color:white; }
+  button.secondary { background:transparent; color:CanvasText; border:1px solid var(--border); }
+  button:disabled { opacity:.55; cursor:wait; }
+  .actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:12px; }
+  .hint { font-size:.88rem; opacity:.8; }
+  #status { white-space:pre-wrap; padding:10px 12px; border-radius:8px; background:color-mix(in srgb, CanvasText 6%, Canvas); }
+  #preview { width:100%; min-height:260px; border:1px solid var(--border); border-radius:8px; background:white; }
+  .warning { border-left:4px solid #d97706; padding:10px 12px; background:color-mix(in srgb,#d97706 10%,Canvas); }
+  @media(max-width:680px) { .grid { grid-template-columns:1fr; } main { margin-top:14px; } textarea { min-height:300px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>GitHub Pages — Self Editor</h1>
+  <p>Edit this page's HTML, commit it to your repository, then reload the published page.</p>
+</header>
+<main>
+  <section class="panel">
+    <h2>1. Repository settings</h2>
+    <div class="warning"><strong>Security:</strong> Never hard-code a GitHub token in a public HTML file or commit it to your repository. Paste a fine-grained personal access token only when needed, grant access to this repository with <em>Contents: Read and write</em>, and revoke it after use. Anyone who can run modified page JavaScript could potentially steal a token entered here. For a safer production setup, use a small backend or GitHub App.</div>
+    <div class="grid" style="margin-top:14px">
+      <div><label for="owner">GitHub username / organization</label><input id="owner" autocomplete="off" placeholder="your-username"></div>
+      <div><label for="repo">Repository name</label><input id="repo" autocomplete="off" placeholder="your-repository"></div>
+      <div><label for="path">HTML file path in repository</label><input id="path" value="index.html" autocomplete="off"></div>
+      <div><label for="branch">Branch</label><input id="branch" value="main" autocomplete="off"></div>
+      <div style="grid-column:1/-1"><label for="token">GitHub fine-grained access token</label><input id="token" type="password" autocomplete="new-password" placeholder="github_pat_…"><div class="hint">Kept only in this page's memory; it is not saved to local storage or embedded in the file.</div></div>
+    </div>
+    <div class="actions">
+      <button id="loadBtn">Load HTML from GitHub</button>
+      <button id="currentBtn" class="secondary">Use current page HTML</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2. Edit the HTML source</h2>
+    <label for="source">HTML source</label>
+    <textarea id="source" spellcheck="false" placeholder="Load the repository file, or click “Use current page HTML”…"></textarea>
+    <div class="actions">
+      <button id="previewBtn" class="secondary">Preview edited HTML</button>
+      <button id="commitBtn">Commit changes to GitHub</button>
+    </div>
+    <p class="hint">Commit updates the selected file on the selected branch. GitHub Pages may take a short time to rebuild after the commit.</p>
+  </section>
+
+  <section class="panel">
+    <h2>3. Preview</h2>
+    <iframe id="preview" title="HTML preview" sandbox="allow-forms allow-modals allow-popups"></iframe>
+    <p class="hint">The preview is sandboxed. Scripts in the preview are disabled, which helps prevent previewed HTML from accessing this editor.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Status</h2>
+    <div id="status" role="status" aria-live="polite">Ready. Enter repository details and load the HTML file.</div>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let currentSha = null;
+  let loadedFile = null;
+  const status = message => { $('status').textContent = message; };
+  const setBusy = busy => {
+    ['loadBtn','currentBtn','previewBtn','commitBtn'].forEach(id => $(''+id).disabled = busy);
+  };
+  const settings = () => {
+    const owner = $('owner').value.trim();
+    const repo = $('repo').value.trim();
+    const path = $('path').value.trim().replace(/^\/+/, '');
+    const branch = $('branch').value.trim() || 'main';
+    const token = $('token').value.trim();
+    if (!owner || !repo || !path || !token) throw new Error('Please enter owner, repository, file path, and token.');
+    return { owner, repo, path, branch, token };
+  };
+  const apiUrl = s => `https://api.github.com/repos/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}/contents/${s.path.split('/').map(encodeURIComponent).join('/')}`;
+  const headers = token => ({
+    'Accept': 'application/vnd.github+json',
+    'Authorization': `Bearer ${token}`,
+    'X-GitHub-Api-Version': '2022-11-28'
+  });
+  const decodeBase64Utf8 = b64 => {
+    const binary = atob(b64.replace(/\n/g, ''));
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  };
+  const encodeBase64Utf8 = str => {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i=0; i<bytes.length; i+=chunk) binary += String.fromCharCode(...bytes.subarray(i, i+chunk));
+    return btoa(binary);
+  };
+  async function loadFromGithub() {
+    setBusy(true);
+    try {
+      const s = settings();
+      status('Loading file from GitHub…');
+      const url = apiUrl(s) + `?ref=${encodeURIComponent(s.branch)}`;
+      const res = await fetch(url, { headers: headers(s.token) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `GitHub API error (${res.status})`);
+      if (Array.isArray(data) || data.type !== 'file') throw new Error('The selected path is not a single file.');
+      if (data.encoding !== 'base64' || !data.content) throw new Error('GitHub did not return a base64 file body. Check that the file is not too large.');
+      $('source').value = decodeBase64Utf8(data.content);
+      currentSha = data.sha;
+      loadedFile = { owner:s.owner, repo:s.repo, path:s.path, branch:s.branch };
+      status(`Loaded ${s.path} from ${s.owner}/${s.repo} (${s.branch}).\nFile SHA captured; you can now edit and commit.`);
+      showPreview();
+    } catch (e) { status('Load failed: ' + e.message); }
+    finally { setBusy(false); }
+  }
+  function useCurrentPage() {
+    // This is a convenience copy of the current DOM, not the original server file bytes.
+    $('source').value = '<!doctype html>\\n' + document.documentElement.outerHTML;
+    currentSha = null;
+    loadedFile = null;
+    status('Copied the current page DOM. Load the repository file before committing so its existing SHA can be checked.');
+    showPreview();
+  }
+  function showPreview() {
+    const doc = $('preview').contentDocument;
+    doc.open();
+    doc.write($('source').value);
+    doc.close();
+  }
+  async function commitToGithub() {
+    setBusy(true);
+    try {
+      const s = settings();
+      if (!loadedFile || !currentSha ||
+          loadedFile.owner !== s.owner || loadedFile.repo !== s.repo ||
+          loadedFile.path !== s.path || loadedFile.branch !== s.branch) {
+        throw new Error('First click “Load HTML from GitHub” for this exact repository, branch, and path. This prevents accidental overwrites.');
+      }
+      const content = $('source').value;
+      if (!content.trim()) throw new Error('HTML source is empty.');
+      const confirmed = confirm(`Commit changes to ${s.owner}/${s.repo}/${s.path} on branch ${s.branch}?`);
+      if (!confirmed) return;
+      status('Committing changes…');
+      const res = await fetch(apiUrl(s), {
+        method:'PUT',
+        headers:{...headers(s.token), 'Content-Type':'application/json'},
+        body:JSON.stringify({
+          message:`Update ${s.path} via GitHub Pages editor`,
+          content:encodeBase64Utf8(content),
+          sha:currentSha,
+          branch:s.branch
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `GitHub API error (${res.status})`);
+      currentSha = data.content && data.content.sha ? data.content.sha : null;
+      status(`Commit created successfully.\nCommit: ${data.commit && data.commit.html_url ? data.commit.html_url : '(URL unavailable)'}\n\nGitHub Pages may take 1–5 minutes to publish. Reload the site after the deployment finishes.`);
+      // Clear token from the field after successful write.
+      $('token').value = '';
+    } catch (e) { status('Commit failed: ' + e.message); }
+    finally { setBusy(false); }
+  }
+  $('loadBtn').addEventListener('click', loadFromGithub);
+  $('currentBtn').addEventListener('click', useCurrentPage);
+  $('previewBtn').addEventListener('click', () => { showPreview(); status('Preview refreshed.'); });
+  $('commitBtn').addEventListener('click', commitToGithub);
+})();
+</script>
+</body>
+</html>
